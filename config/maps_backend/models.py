@@ -54,4 +54,4 @@ class Road(models.Model):
         verbose_name_plural = 'roads'
     
     def __str__(self):
-        return self.name  # or any other field you want to use as the string representation
+        return self.name or f"Unnamed Road - {self.pk}" # or any other field you want to use as the string representation

@@ -59,6 +59,10 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.gis",  # Add this line for GeoDjango support
     
+    # 3rd party apps
+    "rest_framework",
+    "rest_framework_gis",
+    
     # local apps
     "maps_backend.apps.MapsBackendConfig",
     "maps_frontend.apps.MapsFrontendConfig",
