@@ -22,6 +22,6 @@ function init() {
     }
   };
 
-  // call city search function
-  setupCitySearch(map);
+  // call layer search function
+  setupLayerSearch(map);
 }

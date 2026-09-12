@@ -13,9 +13,14 @@
     {% block js %} {% endblock %}
 
     <div id="city-search-box">
-        <input type="text" id="city-search-input" placeholder="Search city..." />
-        <button id="city-search-btn">Search</button>
-        <p id="city-search-error"></p>
+        <select id="layer-select">
+            <option value="city">City</option>
+            <option value="landmark">Landmark</option>
+            <option value="road">Road</option>
+        </select>
+        <input type="text" id="layer-search-input" placeholder="Enter name..." />
+        <button id="layer-search-btn">Search</button>
+        <p id="layer-search-error"></p>
     </div>
 
     <div id="map"></div>
