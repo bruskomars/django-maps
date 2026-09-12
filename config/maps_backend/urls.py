@@ -1,0 +1,7 @@
+from django.conf.urls import include
+from . import views
+from django.urls import path
+
+urlpatterns = [
+    path('city/', views.AdminCityListView.as_view(), name='admin-city-list'),
+]
