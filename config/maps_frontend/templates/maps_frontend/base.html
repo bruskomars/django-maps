@@ -12,6 +12,12 @@
 <body>
     {% block js %} {% endblock %}
 
+    <div id="city-search-box">
+        <input type="text" id="city-search-input" placeholder="Search city..." />
+        <button id="city-search-btn">Search</button>
+        <p id="city-search-error"></p>
+    </div>
+
     <div id="map"></div>
     {% block content %} {% endblock %}
     
