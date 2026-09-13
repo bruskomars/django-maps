@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     # 3rd party apps
     "rest_framework",
     "rest_framework_gis",
+    "django.contrib.postgres",
     
     # local apps
     "maps_backend.apps.MapsBackendConfig",

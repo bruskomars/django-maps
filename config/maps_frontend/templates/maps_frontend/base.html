@@ -23,6 +23,17 @@
         <p id="layer-search-error"></p>
     </div>
 
+    <div id="address-search-box">
+        <form id="address-search-form">
+            <input type="text" name="hn" placeholder="House Number">
+            <input type="text" name="street" placeholder="Street">
+            <input type="text" name="subd" placeholder="Subdivision">
+            <input type="text" name="brgy" placeholder="Barangay">
+            <input type="text" name="city" placeholder="City">
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
     <div id="map"></div>
     {% block content %} {% endblock %}
     

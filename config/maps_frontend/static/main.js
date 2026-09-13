@@ -24,4 +24,5 @@ function init() {
 
   // call layer search function
   setupLayerSearch(map);
+  setupAddressSearch(map);
 }

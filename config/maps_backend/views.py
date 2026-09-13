@@ -4,6 +4,11 @@ from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer, Ad
 from django.http import Http404
 from rest_framework.exceptions import ParseError
 
+# search address import
+from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
+from django.db.models.functions import Concat, Coalesce
+from django.db.models import Value, CharField, F
+
 # Create your views here.
 class AdminCityListView(generics.ListAPIView):
     
@@ -63,32 +68,53 @@ class AddressListView(generics.ListAPIView):
     
     def get_queryset(self):
         params = self.request.query_params
-        house_number = params.get('house_number')
+        hn = params.get('hn')
         street = params.get('street')
-        subdivision = params.get('subdivision')
-        barangay = params.get('barangay')
-        city = params.get('city')
-        
-        if not any([house_number, street, subdivision, barangay, city]):
-            raise ParseError("At least one search field is required.")
-        
-        qs = Address.objects.all()
+        subdivision = params.get('subd')
+        barangay = params.get('brgy')
+        municipality = params.get('city')
 
-        if house_number:
-            qs = qs.filter(hn__icontains=house_number)
+        if not any([hn, street, subdivision, barangay, municipality]):
+            raise ParseError("At least one search field is required.")
+
+        qs = Address.objects.all()
+        THRESHOLD = 0.85  # tune this per field if needed
+
+        # House number: exact match only, no fuzziness
+        if hn:
+            qs = qs.filter(hn=hn)
+
+        similarity_fields = []
 
         if street:
-            # matches across all three street name parts
-            qs = qs.filter(sn__icontains=street)
-        if subdivision:
-            qs = qs.filter(subdivision__icontains=subdivision)
+            qs = qs.annotate(street_sim=TrigramWordSimilarity(street, 'sn'))
+            qs = qs.filter(street_sim__gt=THRESHOLD)
+            similarity_fields.append('street_sim')
+
         if barangay:
-            qs = qs.filter(barangay__icontains=barangay)
-        if city:
-            qs = qs.filter(city__icontains=city)
+            qs = qs.annotate(brgy_sim=TrigramSimilarity('barangay', barangay))
+            qs = qs.filter(brgy_sim__gt=THRESHOLD)
+            similarity_fields.append('brgy_sim')
+
+        if municipality:
+            qs = qs.annotate(city_sim=TrigramSimilarity('municipality', municipality))
+            qs = qs.filter(city_sim__gt=THRESHOLD)
+            similarity_fields.append('city_sim')
+
+        if subdivision:
+            qs = qs.annotate(subd_sim=TrigramSimilarity('subdivision', subdivision))
+            qs = qs.filter(subd_sim__gt=THRESHOLD)
+            similarity_fields.append('subd_sim')
+
+        # Rank by combined similarity across whichever fields were actually searched
+        if similarity_fields:
+            combined_expr = F(similarity_fields[0])
+            for field in similarity_fields[1:]:
+                combined_expr = combined_expr + F(field)
+            qs = qs.annotate(combined_score=combined_expr).order_by('-combined_score')
 
         if not qs.exists():
             raise Http404("No matching address points found.")
 
-        return qs
+        return qs[:5]
         
