@@ -1,5 +1,5 @@
 from django.contrib.gis import admin
-from .models import Admin, Landmark, Road
+from .models import Admin, Landmark, Road, Address
 # Register your models here.
 class CustomGeoAdmin(admin.GISModelAdmin):
     gis_widget_kwargs = {
@@ -20,4 +20,8 @@ class LandmarkAdmin(CustomGeoAdmin):
 
 @admin.register(Road)
 class RoadAdmin(CustomGeoAdmin):
+    pass
+
+@admin.register(Address)
+class AddressAdmin(CustomGeoAdmin):
     pass

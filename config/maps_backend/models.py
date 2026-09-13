@@ -55,3 +55,27 @@ class Road(models.Model):
     
     def __str__(self):
         return self.name or f"Unnamed Road - {self.pk}" # or any other field you want to use as the string representation
+    
+class Address(models.Model):
+    id = models.IntegerField(primary_key=True)
+    geom = models.PointField(blank=True, null=True)
+    country_code = models.CharField(blank=True, null=True)
+    geometry = models.CharField(blank=True, null=True)
+    municipality = models.CharField(blank=True, null=True)
+    barangay = models.CharField(blank=True, null=True)
+    postal_code = models.CharField(blank=True, null=True)
+    sn = models.CharField(blank=True, null=True)
+    hn = models.CharField(blank=True, null=True)
+    building_name = models.CharField(blank=True, null=True)
+    unique_street_name = models.CharField(blank=True, null=True)
+    subdivision = models.CharField(blank=True, null=True)
+    province = models.CharField(blank=True, null=True)
+    region = models.CharField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'address'
+    
+    def __str__(self):
+        return f"{self.hn} {self.sn}"
+

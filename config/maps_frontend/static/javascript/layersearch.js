@@ -33,6 +33,7 @@ function setupLayerSearch(map) {
   var activeLayer; // holds the current search result layer
   const errorElement = document.getElementById("layer-search-error");
 
+  // function to build popup
   const buildPopupHtml = (properties, fields) => {
     return fields
       .map((field) => `<p>${field}: ${properties[field] ?? "N/A"}</p>`)

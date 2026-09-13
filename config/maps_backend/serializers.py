@@ -1,4 +1,4 @@
-from .models import Admin, Landmark, Road
+from .models import Admin, Landmark, Road, Address
 from rest_framework_gis.serializers import GeoFeatureModelSerializer
 
 class AdminSerializer(GeoFeatureModelSerializer):
@@ -16,5 +16,11 @@ class LandmarkSerializer(GeoFeatureModelSerializer):
 class RoadSerializer(GeoFeatureModelSerializer):
     class Meta:
         model = Road
+        geo_field = "geom"
+        fields = "__all__"
+
+class AddressSerializer(GeoFeatureModelSerializer):
+    class Meta:
+        model = Address
         geo_field = "geom"
         fields = "__all__"

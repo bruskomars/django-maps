@@ -1,6 +1,6 @@
 from rest_framework import generics
-from .models import Admin, Landmark, Road
-from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer
+from .models import Admin, Landmark, Road, Address
+from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer, AddressSerializer
 from django.http import Http404
 from rest_framework.exceptions import ParseError
 
@@ -56,4 +56,39 @@ class RoadListView(generics.ListAPIView):
         
         return queryset
         
+        
+class AddressListView(generics.ListAPIView):
+    serializer_class = AddressSerializer
+    name = 'address-list'
+    
+    def get_queryset(self):
+        params = self.request.query_params
+        house_number = params.get('house_number')
+        street = params.get('street')
+        subdivision = params.get('subdivision')
+        barangay = params.get('barangay')
+        city = params.get('city')
+        
+        if not any([house_number, street, subdivision, barangay, city]):
+            raise ParseError("At least one search field is required.")
+        
+        qs = Address.objects.all()
+
+        if house_number:
+            qs = qs.filter(hn__icontains=house_number)
+
+        if street:
+            # matches across all three street name parts
+            qs = qs.filter(sn__icontains=street)
+        if subdivision:
+            qs = qs.filter(subdivision__icontains=subdivision)
+        if barangay:
+            qs = qs.filter(barangay__icontains=barangay)
+        if city:
+            qs = qs.filter(city__icontains=city)
+
+        if not qs.exists():
+            raise Http404("No matching address points found.")
+
+        return qs
         
