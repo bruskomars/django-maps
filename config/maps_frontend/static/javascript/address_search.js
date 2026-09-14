@@ -42,11 +42,27 @@ function setupAddressSearch(map) {
             return L.marker(latlng);
           },
           onEachFeature: function (feature, layer) {
-            layer.bindPopup(
-              `${feature.properties.hn} ${feature.properties.sn} - ${feature.properties.subd}, ${feature.properties.barangay} ${feature.properties.municipality}`,
-            );
+            const p = feature.properties;
+
+            const addressLine = [p.hn, p.sn].filter(Boolean).join(" ");
+            const popupText = [
+              addressLine,
+              p.subdivision,
+              p.barangay,
+              p.municipality,
+            ]
+              .filter(Boolean)
+              .join(", ");
+            layer.bindPopup(popupText);
           },
         }).addTo(map);
+
+        if (data.features && data.features.length > 0) {
+          map.fitBounds(addressResultsLayer.getBounds(), {
+            padding: [50, 50],
+            maxZoom: 17,
+          });
+        }
       })
       .catch((err) => {
         if (addressResultsLayer) {

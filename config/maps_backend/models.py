@@ -64,6 +64,7 @@ class Address(models.Model):
     municipality = models.CharField(blank=True, null=True)
     barangay = models.CharField(blank=True, null=True)
     postal_code = models.CharField(blank=True, null=True)
+    street_base_name = models.CharField(blank=True, null=True)
     sn = models.CharField(blank=True, null=True)
     hn = models.CharField(blank=True, null=True)
     building_name = models.CharField(blank=True, null=True)

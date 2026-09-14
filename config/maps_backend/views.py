@@ -6,8 +6,9 @@ from rest_framework.exceptions import ParseError
 
 # search address import
 from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
-from django.db.models.functions import Concat, Coalesce
+from django.db.models.functions import Concat, Coalesce, Replace
 from django.db.models import Value, CharField, F
+import re
 
 # Create your views here.
 class AdminCityListView(generics.ListAPIView):
@@ -81,29 +82,49 @@ class AddressListView(generics.ListAPIView):
         THRESHOLD = 0.85  # tune this per field if needed
 
         # House number: exact match only, no fuzziness
+        def normalize_hn(value):
+            return value.replace(' ', '').replace('-', '')
+        
+        STREET_SUFFIXES = r'\b(street|st\.?|avenue|ave\.?|avenida|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|lane|ln\.?|calle)\b'
+        
+        def strip_suffix(value):
+            cleaned = re.sub(STREET_SUFFIXES, '', value, flags=re.IGNORECASE)
+            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+            return cleaned
+        
         if hn:
-            qs = qs.filter(hn=hn)
+            hn_normalized = normalize_hn(hn)
+            escaped = re.escape(hn_normalized)
+            pattern = rf'^{escaped}$|^{escaped}[^0-9]'
+
+            qs = qs.annotate(
+                hn_normalized=Replace(
+                    Replace('hn', Value(' '), Value(''), output_field=CharField()),
+                    Value('-'), Value(''), output_field=CharField()
+                )
+            ).filter(hn_normalized__iregex=pattern)
 
         similarity_fields = []
 
         if street:
-            qs = qs.annotate(street_sim=TrigramWordSimilarity(street, 'sn'))
-            qs = qs.filter(street_sim__gt=THRESHOLD)
+            street_clean = strip_suffix(street) or street
+            qs = qs.annotate(street_sim=TrigramWordSimilarity(street_clean, 'street_base_name'))
+            qs = qs.filter(street_sim__gt=.5)
             similarity_fields.append('street_sim')
-
+            
         if barangay:
             qs = qs.annotate(brgy_sim=TrigramSimilarity('barangay', barangay))
-            qs = qs.filter(brgy_sim__gt=THRESHOLD)
+            qs = qs.filter(brgy_sim__gt=.4)
             similarity_fields.append('brgy_sim')
 
         if municipality:
             qs = qs.annotate(city_sim=TrigramSimilarity('municipality', municipality))
-            qs = qs.filter(city_sim__gt=THRESHOLD)
+            qs = qs.filter(city_sim__gt=.4)
             similarity_fields.append('city_sim')
 
         if subdivision:
             qs = qs.annotate(subd_sim=TrigramSimilarity('subdivision', subdivision))
-            qs = qs.filter(subd_sim__gt=THRESHOLD)
+            qs = qs.filter(subd_sim__gt=.5)
             similarity_fields.append('subd_sim')
 
         # Rank by combined similarity across whichever fields were actually searched
