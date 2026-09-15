@@ -1,14 +1,21 @@
 from rest_framework import generics
 from .models import Admin, Landmark, Road, Address
-from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer, AddressSerializer
+from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer, AddressSerializer, LandmarkGeoSerializer
 from django.http import Http404
 from rest_framework.exceptions import ParseError
+
+# Landmark Cross Model Search
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.contrib.gis.measure import D
+from django.contrib.gis.db.models.aggregates import Union
 
 # search address import
 from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
 from django.db.models.functions import Concat, Coalesce, Replace
 from django.db.models import Value, CharField, F
 import re
+from rest_framework_gis.serializers import GeoFeatureModelSerializer
 
 # Create your views here.
 class AdminCityListView(generics.ListAPIView):
@@ -138,4 +145,64 @@ class AddressListView(generics.ListAPIView):
             raise Http404("No matching address points found.")
 
         return qs[:5]
+    
+class CrossModelSearchView(APIView):
+    def get(self, request):
+        params = self.request.query_params
+        landmark = params.get('landmark')
+        hn = params.get('hn')
+        street = params.get('street')
+        subdivision = params.get('subd')
+        barangay = params.get('brgy')
+        municipality = params.get('city')
+        
+        results = {}
+        
+        if landmark:
+            landmarks = self.search_landmark(
+                landmark, barangay=barangay, city=municipality, street=street
+            )
+            results["landmark"] = LandmarkGeoSerializer(landmarks, many=True).data
+                
+        
+        return Response({"results": results})
+    
+    def search_landmark(self, landmark_query, barangay=None, city=None, street=None):
+        THRESHOLD = .35
+        qs = Landmark.objects.annotate(
+            sim=TrigramWordSimilarity(landmark_query, "name")).filter(sim__gte=.35)
+        
+        if city:
+            best_city_row = Admin.objects.annotate(
+                sim=TrigramWordSimilarity(city, 'city')
+            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+            
+            if best_city_row:
+                # Now get ALL barangay rows under that exact city name, and union their geometries
+                city_admins = Admin.objects.filter(city=best_city_row.city)
+                city_union = city_admins.aggregate(union=Union('geom'))['union']
+                if city_union:
+                    qs = qs.filter(geom__intersects=city_union)
+
+        # Match barangay independently
+        if barangay:
+            brgy_match = Admin.objects.annotate(
+                sim=TrigramWordSimilarity(barangay, 'barangay')
+            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+            if brgy_match:
+                qs = qs.filter(geom__intersects=brgy_match.geom)
+
+        # Match street independently (unchanged from before)
+        if street:
+            road_match = Road.objects.exclude(name__isnull=True).exclude(name__exact=''
+            ).annotate(
+                sim=TrigramWordSimilarity(street, 'name')
+            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+            if road_match:
+                qs = qs.filter(geom__dwithin=(road_match.geom, D(m=200)))
+                
+        
+        return qs.order_by('-sim')[:10]
+            
+        
         
