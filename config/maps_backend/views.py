@@ -3,6 +3,7 @@ from .models import Admin, Landmark, Road, Address
 from .serializers import AdminSerializer, LandmarkSerializer, RoadSerializer, AddressSerializer, LandmarkGeoSerializer
 from django.http import Http404
 from rest_framework.exceptions import ParseError
+import time
 
 # Landmark Cross Model Search
 from rest_framework.views import APIView
@@ -170,7 +171,7 @@ class CrossModelSearchView(APIView):
     def search_landmark(self, landmark_query, barangay=None, city=None, street=None):
         THRESHOLD = .35
         qs = Landmark.objects.annotate(
-            sim=TrigramWordSimilarity(landmark_query, "name")).filter(sim__gte=.35)
+            sim=TrigramWordSimilarity(landmark_query, "name")).filter(sim__gte=.65)
         
         if city:
             best_city_row = Admin.objects.annotate(
@@ -202,7 +203,7 @@ class CrossModelSearchView(APIView):
                 qs = qs.filter(geom__dwithin=(road_match.geom, D(m=200)))
                 
         
-        return qs.order_by('-sim')[:10]
+        return qs.order_by('-sim')[:20]
             
         
         
