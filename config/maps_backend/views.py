@@ -19,6 +19,9 @@ from django.db.models import Value, CharField, F
 import re
 from rest_framework_gis.serializers import GeoFeatureModelSerializer
 
+# utils
+from .utils import *
+
 # Create your views here.
 class AdminCityListView(generics.ListAPIView):
     
@@ -166,13 +169,48 @@ class CrossModelSearchView(APIView):
             )
             results["landmark"] = LandmarkGeoSerializer(landmarks, many=True).data
                 
-        
+    
+        if hn:
+            addresses  = self.search_address(
+                hn, street=street, subdivision=subdivision, municipality=municipality, barangay=barangay
+            )
+            
+            results["hn"] = AddressSerializer(addresses , many=True).data      
+                              
         return Response({"results": results})
+    
+    def search_address(self, hn, street=None, subdivision=None, barangay=None, municipality=None):
+        qs = Address.objects.all()
+
+        if hn:
+            qs = filter_by_hn(qs, hn)
+
+        if street:
+            street_clean = strip_suffix(street) or street
+            qs = qs.annotate(street_sim=TrigramWordSimilarity(street_clean, 'street_base_name'))
+            qs = qs.filter(street_sim__gt=.5)
+
+        if barangay:
+            qs = qs.annotate(brgy_sim=TrigramSimilarity('barangay', barangay))
+            qs = qs.filter(brgy_sim__gt=.4)
+
+        if municipality:
+            qs = qs.annotate(city_sim=TrigramSimilarity('municipality', municipality))
+            qs = qs.filter(city_sim__gt=.4)
+
+        if subdivision:
+            qs = qs.annotate(subd_sim=TrigramSimilarity('subdivision', subdivision))
+            qs = qs.filter(subd_sim__gt=.5)
+
+        return qs[:20]
     
     def search_landmark(self, landmark_query, barangay=None, city=None, street=None):
         THRESHOLD = .35
+        # search landmark table and annotates the query and landmark name
         qs = Landmark.objects.annotate(
             sim=TrigramWordSimilarity(landmark_query, "name")).filter(sim__gte=.65)
+        
+        # self.admin_check_spatial(city, barangay, THRESHOLD, qs)
         
         if city:
             best_city_row = Admin.objects.annotate(
@@ -193,6 +231,7 @@ class CrossModelSearchView(APIView):
             ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
             if brgy_match:
                 qs = qs.filter(geom__intersects=brgy_match.geom)
+        
 
         # Match street independently (unchanged from before)
         candidates = list(qs.order_by('-sim')[:20])
@@ -200,53 +239,11 @@ class CrossModelSearchView(APIView):
         if street and candidates:
             candidates = [
                 lm for lm in candidates
-                if self.landmark_matches_street(lm, street)
+                if find_nearby_matching_street(lm.geom, street)
             ]
 
         return candidates
-    
-    # function to get the K# of streets nearest to landmarks and check if the street query is included
-    # def landmark_matches_street(self, landmark_obj, street_query, threshold=0.35, k=10):
-    #     # """
-    #     # Check whether any of the landmark's nearest streets fuzzy-matches
-    #     # the given street query, using the index-accelerated KNN lookup.
-    #     # """
-    #     with connection.cursor() as cursor:
-    #         cursor.execute("""
-    #             SELECT name, similarity(name, %s) as sim
-    #             FROM roads
-    #             WHERE name IS NOT NULL AND name != ''
-    #             ORDER BY geom <-> ST_GeomFromEWKB(%s)
-    #             LIMIT %s
-    #         """, [street_query, bytes(landmark_obj.geom.ewkb), k])
-    #         rows = cursor.fetchall()
 
-    #     return any(sim >= threshold for _, sim in rows)
-    
-    # function to get the nearest streets within the landmark with a given distance and check if the street query is included
-    def landmark_matches_street(self, landmark_obj, street_query, name_threshold=0.35, max_distance_m=150):
-        """
-        Check whether a street matching `street_query` exists within `max_distance_m`
-        of this landmark, regardless of its rank among nearby streets.
-        """
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT name, similarity(name, %s) as sim, ST_DistanceSphere(geom, %s) as distance
-                FROM roads
-                WHERE name IS NOT NULL AND name != ''
-                AND ST_DWithin(geom::geography, %s::geography, %s)
-                AND similarity(name, %s) >= %s
-                ORDER BY distance ASC
-                LIMIT 1
-            """, [
-                street_query,
-                bytes(landmark_obj.geom.ewkb),
-                bytes(landmark_obj.geom.ewkb), max_distance_m,
-                street_query, name_threshold
-            ])
-            row = cursor.fetchone()
-
-        return row is not None
             
         
         

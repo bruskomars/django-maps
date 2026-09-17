@@ -28,7 +28,7 @@ function setupCrossModelSearch(map) {
     fetch(`/api/search/?${params.toString()}`)
       .then((response) => {
         if (response.status === 404) {
-          throw new Error("NOT FOUND");
+          throw new Error("NOT_FOUND");
         }
         if (!response.ok) {
           throw new Error("SERVER_ERROR");
@@ -47,43 +47,66 @@ function setupCrossModelSearch(map) {
         }
 
         const landmarkGeojson = data.results && data.results.landmark;
+        const addressGeojson = data.results && data.results.hn;
 
-        if (
-          !landmarkGeojson ||
-          !landmarkGeojson.features ||
-          landmarkGeojson.features.length === 0
-        ) {
+        const hasLandmarks =
+          landmarkGeojson &&
+          landmarkGeojson.features &&
+          landmarkGeojson.features.length > 0;
+        const hasAddresses =
+          addressGeojson &&
+          addressGeojson.features &&
+          addressGeojson.features.length > 0;
+
+        if (!hasLandmarks && !hasAddresses) {
           messageBox.textContent = "No results found for that search.";
           messageBox.style.display = "block";
           return;
         }
 
-        searchResultsLayer = L.geoJSON(landmarkGeojson, {
-          pointToLayer: function (feature, latlng) {
-            return L.marker(latlng);
-          },
-          // runs for every feature in your GeoJSON for custom behavior
-          onEachFeature: function (feature, layer) {
-            // build popup string using feature properties
-            const p = feature.properties;
+        const allLayers = [];
 
-            const popupText = [p.name, p.admin.barangay, p.admin.city]
-              // remove falsy values
-              .filter(Boolean)
-              .join(", ");
-            layer.bindPopup(popupText);
-          },
-        }).addTo(map);
+        if (hasLandmarks) {
+          const landmarkLayer = L.geoJSON(landmarkGeojson, {
+            pointToLayer: function (feature, latlng) {
+              return L.marker(latlng);
+            },
+            onEachFeature: function (feature, layer) {
+              const p = feature.properties;
+              const popupText = [p.name, p.admin?.barangay, p.admin?.city]
+                .filter(Boolean)
+                .join(", ");
+              layer.bindPopup(popupText);
+            },
+          });
+          allLayers.push(landmarkLayer);
+        }
 
-        // zooming the map to search results if any
-        map.fitBounds(searchResultsLayer.getBounds(), {
-          padding: [50, 50],
-          maxZoom: 17,
-        });
+        if (hasAddresses) {
+          const addressLayer = L.geoJSON(addressGeojson, {
+            pointToLayer: function (feature, latlng) {
+              return L.marker(latlng);
+            },
+            onEachFeature: function (feature, layer) {
+              const p = feature.properties;
+              const popupText = [p.hn, p.sn, p.barangay, p.municipality]
+                .filter(Boolean)
+                .join(", ");
+              layer.bindPopup(popupText);
+            },
+          });
+          allLayers.push(addressLayer);
+        }
+
+        searchResultsLayer = L.layerGroup(allLayers).addTo(map);
+
+        const combined = allLayers.reduce(
+          (bounds, layer) => bounds.extend(layer.getBounds()),
+          L.latLngBounds([]),
+        );
+        map.fitBounds(combined, { padding: [50, 50], maxZoom: 17 });
       })
-      // error handleer if the .then blocks throws an error
       .catch((err) => {
-        // Cleans up the map by removing any previous search results layer
         if (searchResultsLayer) {
           map.removeLayer(searchResultsLayer);
           searchResultsLayer = null;
@@ -93,7 +116,6 @@ function setupCrossModelSearch(map) {
         } else {
           messageBox.textContent = "Something went wrong. Please try again.";
         }
-        // Makes the message box visible so the user sees the error message.
         messageBox.style.display = "block";
       });
   });
