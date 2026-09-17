@@ -185,25 +185,25 @@ class CrossModelSearchView(APIView):
         if hn:
             qs = filter_by_hn(qs, hn)
 
+        if street or barangay or municipality or subdivision:
+            with connection.cursor() as cursor:
+                cursor.execute("SET pg_trgm.similarity_threshold = 0.4;")
+
         if street:
             street_clean = strip_suffix(street) or street
-            qs = qs.annotate(street_sim=TrigramWordSimilarity(street_clean, 'street_base_name'))
-            qs = qs.filter(street_sim__gt=.5)
+            qs = qs.filter(street_base_name__trigram_similar=street_clean)
 
         if barangay:
-            qs = qs.annotate(brgy_sim=TrigramSimilarity('barangay', barangay))
-            qs = qs.filter(brgy_sim__gt=.4)
+            qs = qs.filter(barangay__trigram_similar=barangay)
 
         if municipality:
-            qs = qs.annotate(city_sim=TrigramSimilarity('municipality', municipality))
-            qs = qs.filter(city_sim__gt=.4)
+            qs = qs.filter(municipality__trigram_similar=municipality)
 
         if subdivision:
-            qs = qs.annotate(subd_sim=TrigramSimilarity('subdivision', subdivision))
-            qs = qs.filter(subd_sim__gt=.5)
+            qs = qs.filter(subdivision__trigram_similar=subdivision)
 
         return qs[:20]
-    
+        
     def search_landmark(self, landmark_query, barangay=None, city=None, street=None):
         THRESHOLD = .35
         # search landmark table and annotates the query and landmark name
