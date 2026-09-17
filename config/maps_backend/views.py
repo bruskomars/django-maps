@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.gis.measure import D
 from django.contrib.gis.db.models.aggregates import Union
+from django.db import connection
 
 # search address import
 from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
@@ -194,16 +195,58 @@ class CrossModelSearchView(APIView):
                 qs = qs.filter(geom__intersects=brgy_match.geom)
 
         # Match street independently (unchanged from before)
-        if street:
-            road_match = Road.objects.exclude(name__isnull=True).exclude(name__exact=''
-            ).annotate(
-                sim=TrigramWordSimilarity(street, 'name')
-            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
-            if road_match:
-                qs = qs.filter(geom__dwithin=(road_match.geom, D(m=200)))
-                
-        
-        return qs.order_by('-sim')[:20]
+        candidates = list(qs.order_by('-sim')[:20])
+
+        if street and candidates:
+            candidates = [
+                lm for lm in candidates
+                if self.landmark_matches_street(lm, street)
+            ]
+
+        return candidates
+    
+    # function to get the K# of streets nearest to landmarks and check if the street query is included
+    # def landmark_matches_street(self, landmark_obj, street_query, threshold=0.35, k=10):
+    #     # """
+    #     # Check whether any of the landmark's nearest streets fuzzy-matches
+    #     # the given street query, using the index-accelerated KNN lookup.
+    #     # """
+    #     with connection.cursor() as cursor:
+    #         cursor.execute("""
+    #             SELECT name, similarity(name, %s) as sim
+    #             FROM roads
+    #             WHERE name IS NOT NULL AND name != ''
+    #             ORDER BY geom <-> ST_GeomFromEWKB(%s)
+    #             LIMIT %s
+    #         """, [street_query, bytes(landmark_obj.geom.ewkb), k])
+    #         rows = cursor.fetchall()
+
+    #     return any(sim >= threshold for _, sim in rows)
+    
+    # function to get the nearest streets within the landmark with a given distance and check if the street query is included
+    def landmark_matches_street(self, landmark_obj, street_query, name_threshold=0.35, max_distance_m=150):
+        """
+        Check whether a street matching `street_query` exists within `max_distance_m`
+        of this landmark, regardless of its rank among nearby streets.
+        """
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT name, similarity(name, %s) as sim, ST_DistanceSphere(geom, %s) as distance
+                FROM roads
+                WHERE name IS NOT NULL AND name != ''
+                AND ST_DWithin(geom::geography, %s::geography, %s)
+                AND similarity(name, %s) >= %s
+                ORDER BY distance ASC
+                LIMIT 1
+            """, [
+                street_query,
+                bytes(landmark_obj.geom.ewkb),
+                bytes(landmark_obj.geom.ewkb), max_distance_m,
+                street_query, name_threshold
+            ])
+            row = cursor.fetchone()
+
+        return row is not None
             
         
         

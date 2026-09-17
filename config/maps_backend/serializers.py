@@ -78,3 +78,4 @@ class LandmarkGeoSerializer(GeoFeatureModelSerializer):
                 break
 
         return result
+
