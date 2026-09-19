@@ -48,6 +48,7 @@ function setupCrossModelSearch(map) {
 
         const landmarkGeojson = data.results && data.results.landmark;
         const addressGeojson = data.results && data.results.hn;
+        const adminGeojson = data.results && data.results.admin;
 
         const hasLandmarks =
           landmarkGeojson &&
@@ -57,8 +58,12 @@ function setupCrossModelSearch(map) {
           addressGeojson &&
           addressGeojson.features &&
           addressGeojson.features.length > 0;
+        const hasAdmin =
+          adminGeojson &&
+          adminGeojson.features &&
+          adminGeojson.features.length > 0;
 
-        if (!hasLandmarks && !hasAddresses) {
+        if (!hasLandmarks && !hasAddresses && !hasAdmin) {
           messageBox.textContent = "No results found for that search.";
           messageBox.style.display = "block";
           return;
@@ -96,6 +101,25 @@ function setupCrossModelSearch(map) {
             },
           });
           allLayers.push(addressLayer);
+        }
+
+        if (hasAdmin) {
+          const adminLayer = L.geoJSON(adminGeojson, {
+            style: function (feature) {
+              return {
+                color: "black",
+                weight: 2,
+                fillColor: "blue",
+                fillOpacity: 0.3,
+              };
+            },
+            onEachFeature: function (feature, layer) {
+              const p = feature.properties;
+              const popUptext = [p.barangay, p.city].filter(Boolean).join(", ");
+              layer.bindPopup(popUptext);
+            },
+          });
+          allLayers.push(adminLayer);
         }
 
         searchResultsLayer = L.layerGroup(allLayers).addTo(map);

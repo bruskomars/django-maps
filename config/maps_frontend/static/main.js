@@ -23,7 +23,7 @@ function init() {
   };
 
   // call layer search function
-  setupLayerSearch(map);
+  // setupLayerSearch(map);
   //setupAddressSearch(map);
   setupCrossModelSearch(map);
 }

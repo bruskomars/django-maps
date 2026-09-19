@@ -2,6 +2,9 @@ from django.db import connection
 import re
 from django.db.models import Value, CharField
 from django.db.models.functions import Replace
+from .models import Address, Landmark, Admin
+from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
+from django.contrib.gis.db.models.aggregates import Union
 
 
 def find_nearby_matching_street(geom, street_query, name_threshold=0.35, k=20, max_distance_m=150):
@@ -54,3 +57,88 @@ def strip_suffix(value):
     cleaned = re.sub(STREET_SUFFIXES, '', value, flags=re.IGNORECASE)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
+
+def search_address(hn, street=None, subdivision=None, barangay=None, municipality=None):
+        qs = Address.objects.all()
+
+        if hn:
+            qs = filter_by_hn(qs, hn)
+
+        if street or barangay or municipality or subdivision:
+            with connection.cursor() as cursor:
+                cursor.execute("SET pg_trgm.similarity_threshold = 0.4;")
+
+        if street:
+            street_clean = strip_suffix(street) or street
+            qs = qs.filter(street_base_name__trigram_similar=street_clean)
+
+        if barangay:
+            qs = qs.filter(barangay__trigram_similar=barangay)
+
+        if municipality:
+            qs = qs.filter(municipality__trigram_similar=municipality)
+
+        if subdivision:
+            qs = qs.filter(subdivision__trigram_similar=subdivision)
+
+        return qs[:20]
+    
+def search_landmark(landmark_query, barangay=None, city=None, street=None):
+        THRESHOLD = .35
+        # search landmark table and annotates the query and landmark name
+        qs = Landmark.objects.annotate(
+            sim=TrigramWordSimilarity(landmark_query, "name")).filter(sim__gte=.65)
+        
+        # self.admin_check_spatial(city, barangay, THRESHOLD, qs)
+        
+        if city:
+            best_city_row = Admin.objects.annotate(
+                sim=TrigramWordSimilarity(city, 'city')
+            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+            
+            if best_city_row:
+                # Now get ALL barangay rows under that exact city name, and union their geometries
+                city_admins = Admin.objects.filter(city=best_city_row.city)
+                city_union = city_admins.aggregate(union=Union('geom'))['union']
+                if city_union:
+                    qs = qs.filter(geom__intersects=city_union)
+
+        # Match barangay independently
+        if barangay:
+            brgy_match = Admin.objects.annotate(
+                sim=TrigramWordSimilarity(barangay, 'barangay')
+            ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+            if brgy_match:
+                qs = qs.filter(geom__intersects=brgy_match.geom)
+        
+
+        # Match street independently (unchanged from before)
+        candidates = list(qs.order_by('-sim')[:20])
+
+        if street and candidates:
+            candidates = [
+                lm for lm in candidates
+                if find_nearby_matching_street(lm.geom, street)
+            ]
+
+        return candidates
+
+            
+def search_admin(barangay=None, city=None):
+    if barangay and city:
+        qs = Admin.objects.annotate(
+            brgy_sim=TrigramWordSimilarity(barangay, "barangay"),
+            city_sim=TrigramWordSimilarity(city, "city")
+        ).filter(brgy_sim__gte=.85, city_sim__gte=.85)
+    
+    if barangay:
+        qs = Admin.objects.annotate(
+            sim=TrigramWordSimilarity(barangay, "barangay")
+        ).filter(sim__gte=.85)
+    
+    if city:
+            qs = Admin.objects.annotate(
+                sim=TrigramWordSimilarity(city, "city")
+            ).filter(sim__gte=.85)
+    
+    return qs
