@@ -131,15 +131,15 @@ def search_admin(barangay=None, city=None):
             city_sim=TrigramWordSimilarity(city, "city")
         ).filter(brgy_sim__gte=.85, city_sim__gte=.85)
     
-    if barangay:
+    elif barangay and not city :
         qs = Admin.objects.annotate(
             sim=TrigramWordSimilarity(barangay, "barangay")
         ).filter(sim__gte=.85)
     
-    if city:
-            qs = Admin.objects.annotate(
-                sim=TrigramWordSimilarity(city, "city")
-            ).filter(sim__gte=.85)
+    elif city and not barangay:
+        qs = Admin.objects.annotate(
+            sim=TrigramWordSimilarity(city, "city")
+        ).filter(sim__gte=.85)
     
     return qs
 

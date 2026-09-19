@@ -73,8 +73,7 @@ class RoadListView(generics.ListAPIView):
             raise Http404(f"No Road records found for name: {road}")
         
         return queryset
-        
-        
+           
 class AddressListView(generics.ListAPIView):
     serializer_class = AddressSerializer
     name = 'address-list'
