@@ -9,6 +9,127 @@ function setupCrossModelSearch(map) {
   messageBox.style.display = "none";
   form.parentNode.appendChild(messageBox);
 
+  const panel = document.createElement("div");
+  panel.id = "search-results-panel";
+  Object.assign(panel.style, {
+    maxWidth: "100vw",
+    maxHeight: "30vh",
+    overflowY: "auto",
+    background: "white",
+    border: "1px solid #ccc",
+    borderRadius: "6px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+    padding: "10px",
+    marginTop: "12px",
+    display: "none",
+    fontSize: "13px",
+  });
+
+  const panelHeader = document.createElement("div");
+  Object.assign(panelHeader.style, {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px",
+  });
+  const panelTitle = document.createElement("strong");
+  panelTitle.textContent = "Search Results";
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "×";
+  Object.assign(closeBtn.style, {
+    border: "none",
+    background: "transparent",
+    fontSize: "18px",
+    cursor: "pointer",
+    lineHeight: "1",
+  });
+  closeBtn.addEventListener("click", () => {
+    panel.style.display = "none";
+  });
+  panelHeader.appendChild(panelTitle);
+  panelHeader.appendChild(closeBtn);
+
+  const panelBody = document.createElement("div");
+  panel.appendChild(panelHeader);
+  panel.appendChild(panelBody);
+
+  // Insert the panel immediately after the map's container in the DOM,
+  // so it renders below the map instead of floating on top of it.
+  map.getContainer().insertAdjacentElement("afterend", panel);
+
+  function buildResultTable(title, features, columns, layerRefs) {
+    const section = document.createElement("div");
+    section.style.marginBottom = "14px";
+
+    const heading = document.createElement("div");
+    heading.textContent = `${title} (${features.length})`;
+    heading.style.fontWeight = "bold";
+    heading.style.margin = "6px 0";
+    section.appendChild(heading);
+
+    const table = document.createElement("table");
+    Object.assign(table.style, {
+      borderCollapse: "collapse",
+      width: "100%",
+    });
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    columns.forEach((col) => {
+      const th = document.createElement("th");
+      th.textContent = col.label;
+      Object.assign(th.style, {
+        textAlign: "left",
+        borderBottom: "1px solid #ddd",
+        padding: "4px 6px",
+        fontSize: "12px",
+      });
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    features.forEach((feature, idx) => {
+      const p = feature.properties || {};
+      const row = document.createElement("tr");
+      row.style.cursor = "pointer";
+      row.addEventListener(
+        "mouseenter",
+        () => (row.style.background = "#f0f4ff"),
+      );
+      row.addEventListener("mouseleave", () => (row.style.background = ""));
+
+      columns.forEach((col) => {
+        const td = document.createElement("td");
+        td.textContent = col.value(p) ?? "";
+        Object.assign(td.style, {
+          borderBottom: "1px solid #eee",
+          padding: "4px 6px",
+        });
+        row.appendChild(td);
+      });
+
+      row.addEventListener("click", () => {
+        const layer = layerRefs[idx];
+        if (!layer) return;
+        if (typeof layer.getBounds === "function") {
+          map.fitBounds(layer.getBounds(), { maxZoom: 18, padding: [50, 50] });
+        } else if (typeof layer.getLatLng === "function") {
+          map.setView(layer.getLatLng(), 18);
+        }
+        if (typeof layer.openPopup === "function") {
+          layer.openPopup();
+        }
+      });
+
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
+  }
+
   // submit function in form
   form.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -16,7 +137,6 @@ function setupCrossModelSearch(map) {
     // preparing data from a form so it can be sent in a URL
     const formData = new FormData(form);
     const params = new URLSearchParams();
-
     // looping through all the form’s fields and building a clean query string
     for (const [key, value] of formData.entries()) {
       if (value.trim() !== "") {
@@ -39,6 +159,8 @@ function setupCrossModelSearch(map) {
       // success handler after fetch returns JSON
       .then((data) => {
         messageBox.style.display = "none";
+        panelBody.innerHTML = "";
+        panel.style.display = "none";
 
         // remove previous layer on the map
         if (searchResultsLayer) {
@@ -76,10 +198,19 @@ function setupCrossModelSearch(map) {
           return;
         }
 
+        // Track individual feature layers per type, in feature order,
+        // so table rows can be matched to the right marker/shape.
+        const landmarkLayerRefs = [];
+        const addressLayerRefs = [];
+        const adminLayerRefs = [];
+        const roadLayerRefs = [];
+
         if (hasLandmarks) {
           const landmarkLayer = L.geoJSON(landmarkGeojson, {
             pointToLayer: function (feature, latlng) {
-              return L.marker(latlng);
+              const marker = L.marker(latlng);
+              landmarkLayerRefs.push(marker);
+              return marker;
             },
             onEachFeature: function (feature, layer) {
               const p = feature.properties;
@@ -95,7 +226,9 @@ function setupCrossModelSearch(map) {
         if (hasAddresses) {
           const addressLayer = L.geoJSON(addressGeojson, {
             pointToLayer: function (feature, latlng) {
-              return L.marker(latlng);
+              const marker = L.marker(latlng);
+              addressLayerRefs.push(marker);
+              return marker;
             },
             onEachFeature: function (feature, layer) {
               const p = feature.properties;
@@ -122,6 +255,7 @@ function setupCrossModelSearch(map) {
               const p = feature.properties;
               const popUptext = [p.barangay, p.city].filter(Boolean).join(", ");
               layer.bindPopup(popUptext);
+              adminLayerRefs.push(layer);
             },
           });
           allLayers.push(adminLayer);
@@ -141,6 +275,7 @@ function setupCrossModelSearch(map) {
                 .filter(Boolean)
                 .join(" ");
               layer.bindPopup(popUpText);
+              roadLayerRefs.push(layer);
             },
           });
           allLayers.push(roadLayer);
@@ -153,6 +288,82 @@ function setupCrossModelSearch(map) {
           L.latLngBounds([]),
         );
         map.fitBounds(combined, { padding: [50, 50], maxZoom: 17 });
+
+        // --- Build the results table overlay, one section per model ---
+        if (hasLandmarks) {
+          panelBody.appendChild(
+            buildResultTable(
+              "Landmarks",
+              landmarkGeojson.features,
+              [
+                { label: "Name", value: (p) => p.name },
+                { label: "Barangay", value: (p) => p.admin?.barangay },
+                { label: "City", value: (p) => p.admin?.city },
+                { label: "Province", value: (p) => p.admin?.province },
+                {
+                  label: "Nearest Streets",
+                  value: (p) =>
+                    (p.nearest_streets || []).map((s) => s.name).join(", "),
+                },
+              ],
+              landmarkLayerRefs,
+            ),
+          );
+        }
+
+        if (hasAddresses) {
+          panelBody.appendChild(
+            buildResultTable(
+              "Addresses",
+              addressGeojson.features,
+              [
+                { label: "House No.", value: (p) => p.hn },
+                { label: "Street", value: (p) => p.sn },
+                { label: "Building", value: (p) => p.building_name },
+                { label: "Subdivision", value: (p) => p.subdivision },
+                { label: "Barangay", value: (p) => p.barangay },
+                { label: "Municipality", value: (p) => p.municipality },
+                { label: "Province", value: (p) => p.province },
+                { label: "Region", value: (p) => p.region },
+              ],
+              addressLayerRefs,
+            ),
+          );
+        }
+
+        if (hasAdmin) {
+          panelBody.appendChild(
+            buildResultTable(
+              "Admin Boundaries",
+              adminGeojson.features,
+              [
+                { label: "Barangay", value: (p) => p.barangay },
+                { label: "City", value: (p) => p.city },
+                { label: "Province", value: (p) => p.province },
+                { label: "Postcode", value: (p) => p.postcode },
+              ],
+              adminLayerRefs,
+            ),
+          );
+        }
+
+        if (hasRoad) {
+          panelBody.appendChild(
+            buildResultTable(
+              "Roads",
+              roadGeojson.features,
+              [
+                { label: "Name", value: (p) => p.name },
+                { label: "Prefix", value: (p) => p.name_pf },
+                { label: "Suffix", value: (p) => p.name_sf },
+              ],
+              roadLayerRefs,
+            ),
+          );
+        }
+
+        panel.style.display = "block";
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch((err) => {
         if (searchResultsLayer) {
