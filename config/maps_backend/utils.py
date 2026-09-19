@@ -2,7 +2,7 @@ from django.db import connection
 import re
 from django.db.models import Value, CharField
 from django.db.models.functions import Replace
-from .models import Address, Landmark, Admin
+from .models import Address, Landmark, Admin, Road
 from django.contrib.postgres.search import TrigramSimilarity, TrigramWordSimilarity
 from django.contrib.gis.db.models.aggregates import Union
 
@@ -142,3 +142,37 @@ def search_admin(barangay=None, city=None):
             ).filter(sim__gte=.85)
     
     return qs
+
+def search_road(road_query, barangay=None, city=None):
+    THRESHOLD = .35
+    # search landmark table and annotates the query and landmark name
+    qs = Road.objects.annotate(
+        sim=TrigramWordSimilarity(road_query, "name")).filter(sim__gte=.65)
+    
+    # self.admin_check_spatial(city, barangay, THRESHOLD, qs)
+    
+    if city:
+        best_city_row = Admin.objects.annotate(
+            sim=TrigramWordSimilarity(city, 'city')
+        ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+        
+        if best_city_row:
+            # Now get ALL barangay rows under that exact city name, and union their geometries
+            city_admins = Admin.objects.filter(city=best_city_row.city)
+            city_union = city_admins.aggregate(union=Union('geom'))['union']
+            if city_union:
+                qs = qs.filter(geom__intersects=city_union)
+
+    # Match barangay independently
+    if barangay:
+        brgy_match = Admin.objects.annotate(
+            sim=TrigramWordSimilarity(barangay, 'barangay')
+        ).filter(sim__gte=THRESHOLD).order_by('-sim').first()
+        if brgy_match:
+            qs = qs.filter(geom__intersects=brgy_match.geom)
+    
+
+    # Match street independently (unchanged from before)
+    candidates = list(qs.order_by('-sim')[:20])
+
+    return candidates

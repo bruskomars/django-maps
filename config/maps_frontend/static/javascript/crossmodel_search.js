@@ -49,6 +49,7 @@ function setupCrossModelSearch(map) {
         const landmarkGeojson = data.results && data.results.landmark;
         const addressGeojson = data.results && data.results.hn;
         const adminGeojson = data.results && data.results.admin;
+        const roadGeojson = data.results && data.results.street;
 
         const hasLandmarks =
           landmarkGeojson &&
@@ -62,14 +63,18 @@ function setupCrossModelSearch(map) {
           adminGeojson &&
           adminGeojson.features &&
           adminGeojson.features.length > 0;
+        const hasRoad =
+          roadGeojson &&
+          roadGeojson.features &&
+          roadGeojson.features.length > 0;
 
-        if (!hasLandmarks && !hasAddresses && !hasAdmin) {
+        const allLayers = [];
+
+        if (!hasLandmarks && !hasAddresses && !hasAdmin && !hasRoad) {
           messageBox.textContent = "No results found for that search.";
           messageBox.style.display = "block";
           return;
         }
-
-        const allLayers = [];
 
         if (hasLandmarks) {
           const landmarkLayer = L.geoJSON(landmarkGeojson, {
@@ -120,6 +125,25 @@ function setupCrossModelSearch(map) {
             },
           });
           allLayers.push(adminLayer);
+        }
+
+        if (hasRoad) {
+          const roadLayer = L.geoJSON(roadGeojson, {
+            style: function (feature) {
+              return {
+                color: "blue",
+                weight: 5,
+              };
+            },
+            onEachFeature: function (feature, layer) {
+              const p = feature.properties;
+              const popUpText = [p.name_pf, p.name, p.name_sf]
+                .filter(Boolean)
+                .join(" ");
+              layer.bindPopup(popUpText);
+            },
+          });
+          allLayers.push(roadLayer);
         }
 
         searchResultsLayer = L.layerGroup(allLayers).addTo(map);

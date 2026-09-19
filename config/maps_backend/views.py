@@ -163,6 +163,11 @@ class CrossModelSearchView(APIView):
         
         results = {}
         
+        if (street) and not any([landmark, hn ]):
+            streets = search_road(street, barangay=barangay, city=municipality)
+            results["street"] = RoadSerializer(streets, many=True).data
+                
+        
         if (barangay or municipality) and not any([landmark, hn, street, subdivision]):
             admin = search_admin(barangay=barangay, city=municipality)
             results["admin"] = AdminSerializer(admin, many=True).data
@@ -174,7 +179,7 @@ class CrossModelSearchView(APIView):
             results["landmark"] = LandmarkGeoSerializer(landmarks, many=True).data
                 
     
-        if hn:
+        if hn and not any([landmark]):
             addresses  = search_address(
                 hn, street=street, subdivision=subdivision, municipality=municipality, barangay=barangay
             )
