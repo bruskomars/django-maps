@@ -23,5 +23,6 @@ function init() {
   // call layer search function
   // setupLayerSearch(map);
   //setupAddressSearch(map);
+  setupRoadsWmsLayer(map);
   setupCrossModelSearch(map);
 }
