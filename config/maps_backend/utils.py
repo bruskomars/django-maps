@@ -58,6 +58,9 @@ def strip_suffix(value):
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
+def extract_block_numbers(value):
+    return set(re.findall(r'\d+', value))
+
 def search_address(hn, street=None, subdivision=None, barangay=None, municipality=None):
         qs = Address.objects.all()
 
@@ -66,11 +69,20 @@ def search_address(hn, street=None, subdivision=None, barangay=None, municipalit
 
         if street or barangay or municipality or subdivision:
             with connection.cursor() as cursor:
-                cursor.execute("SET pg_trgm.similarity_threshold = 0.4;")
+                cursor.execute("SET pg_trgm.similarity_threshold = 0.45;")
 
         if street:
             street_clean = strip_suffix(street) or street
+            query_numbers = extract_block_numbers(street_clean)
+
             qs = qs.filter(street_base_name__trigram_similar=street_clean)
+
+            if query_numbers:
+                # Require every number in the query to also appear in the candidate's street name
+                qs = [
+                    addr for addr in qs
+                    if query_numbers.issubset(extract_block_numbers(addr.street_base_name))
+        ]
 
         if barangay:
             qs = qs.filter(barangay__trigram_similar=barangay)
