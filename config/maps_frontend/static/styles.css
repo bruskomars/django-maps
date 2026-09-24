@@ -52,3 +52,14 @@
   border-radius: 4px;
   box-shadow: 0 1px 5px rgba(0,0,0,0.4);
 }
+
+#geoserver-layer-panel {
+  position: absolute;
+  top: 10px;
+  left: 60px;
+  z-index: 1000;
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+}
